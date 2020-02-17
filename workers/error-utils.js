@@ -5,9 +5,23 @@ var __spreadArrays = (this && this.__spreadArrays) || function () {
             r[k] = a[j];
     return r;
 };
-define(["require", "exports"], function (require, exports) {
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
+};
+define(["require", "exports", "esri/geometry/Polyline", "esri/geometry/Point", "esri/geometry/support/webMercatorUtils", "esri/geometry/support/geodesicUtils"], function (require, exports, Polyline_1, Point_1, webMercUtils, geodesicUtils) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
+    Polyline_1 = __importDefault(Polyline_1);
+    Point_1 = __importDefault(Point_1);
+    webMercUtils = __importStar(webMercUtils);
+    geodesicUtils = __importStar(geodesicUtils);
     var addressFields;
     var addressFieldsArray;
     var roadFields;
@@ -18,7 +32,6 @@ define(["require", "exports"], function (require, exports) {
     var badRoads;
     var goodAddresses;
     var badAddresses = [];
-    var fieldArray;
     var matches = [];
     var addressRoadPairs = {};
     exports.splitBadRoadValues = function (_a) {
@@ -38,14 +51,20 @@ define(["require", "exports"], function (require, exports) {
     };
     var badRoadValues = function (f) {
         var errorMessage = "";
-        var addressRangeFields = [roadFields.fromLeft, roadFields.toLeft, roadFields.fromRight, roadFields.toRight];
+        var addressRangeFields = [
+            roadFields.fromLeft,
+            roadFields.toLeft,
+            roadFields.fromRight,
+            roadFields.toRight
+        ];
         addressRangeFields.forEach(function (field) {
             if (isNaN(f.attributes[field]) || f.attributes[field] < 0) {
                 errorMessage += field + " is invalid, ";
             }
         });
-        [roadFields.leftRegion, roadFields.rightRegion].forEach(function (field) {
-            if (f.attributes[field] == null || f.attributes[field].length < 1) {
+        [roadFields.leftCommunity, roadFields.rightCommunity].forEach(function (field) {
+            var _a;
+            if (((_a = f.attributes[field]) === null || _a === void 0 ? void 0 : _a.length) < 1) {
                 errorMessage += field + " is blank, ";
             }
         });
@@ -58,7 +77,7 @@ define(["require", "exports"], function (require, exports) {
         }
     };
     exports.rangeParity = function () {
-        badRoads = badRoads.concat(goodRoads
+        badRoads.push.apply(badRoads, goodRoads
             .filter(function (f) {
             if (f.addressRanges[0][0] % 2 !== f.addressRanges[0][1] % 2 ||
                 f.addressRanges[1][0] % 2 !== f.addressRanges[1][1] % 2) {
@@ -74,7 +93,7 @@ define(["require", "exports"], function (require, exports) {
         }));
     };
     exports.lowToHigh = function () {
-        badRoads = badRoads.concat(goodRoads
+        badRoads.push.apply(badRoads, goodRoads
             .filter(function (f) {
             if (f.addressRanges[0][0] > f.addressRanges[0][1] ||
                 f.addressRanges[1][0] > f.addressRanges[1][1]) {
@@ -90,7 +109,7 @@ define(["require", "exports"], function (require, exports) {
         }));
     };
     exports.nullGeom = function (fs) {
-        badRoads = badRoads.concat(goodRoads
+        badRoads.push.apply(badRoads, goodRoads
             .filter(function (f) {
             if (f.geometry == null) {
                 return true;
@@ -105,7 +124,7 @@ define(["require", "exports"], function (require, exports) {
         }));
     };
     exports.multiPart = function () {
-        badRoads = badRoads.concat(goodRoads
+        badRoads.push.apply(badRoads, goodRoads
             .filter(function (f) {
             var geometry = f.geometry;
             if (geometry.hasOwnProperty("paths") && geometry.paths.length > 1) {
@@ -123,7 +142,12 @@ define(["require", "exports"], function (require, exports) {
     exports.overlappingRanges = function () {
         populateRoadLookup(goodRoads);
         var overlapFeatures = [];
-        var pairs = [[0, 0], [0, 1], [1, 0], [1, 1]];
+        var pairs = [
+            [0, 0],
+            [0, 1],
+            [1, 0],
+            [1, 1]
+        ];
         goodRoads.forEach(function (f, i) {
             for (var j = i; j < goodRoads.length; j++) {
                 var g = goodRoads[j];
@@ -142,7 +166,7 @@ define(["require", "exports"], function (require, exports) {
                 }
             }
         });
-        badRoads = badRoads.concat(overlapFeatures);
+        badRoads.push.apply(badRoads, overlapFeatures);
         return badRoads.map(function (f) {
             f.geomString = JSON.stringify(f.geometry);
             return f;
@@ -173,14 +197,15 @@ define(["require", "exports"], function (require, exports) {
             !(f.communities[1] in roadLookup[f.roadName]) &&
                 (roadLookup[f.roadName][f.communities[1]] = []);
             roadLookup[f.roadName][f.communities[1]].push(f);
-            f.objectId = f.objectId;
+            //f.objectId = f.objectId;
         });
     };
     var isBetween = function (a, b) {
         for (var i = 0; i <= 1; i++) {
             if (a[i] !== 0 &&
                 (a[i] % 2 === b[0] % 2 || a[i] % 2 === b[1] % 2) &&
-                (b[0] <= a[i] && a[i] <= b[1])) {
+                b[0] <= a[i] &&
+                a[i] <= b[1]) {
                 return true;
             }
         }
@@ -192,7 +217,6 @@ define(["require", "exports"], function (require, exports) {
         addressFeatures = JSON.parse(fs);
         addressFields = af;
         addressFieldsArray = [].concat.apply([], Object.values(addressFields));
-        fieldArray = [].concat.apply([], addressFields);
         goodAddresses = addressFeatures.filter(addressBadValues);
     };
     var addressBadValues = function (f) {
@@ -204,12 +228,12 @@ define(["require", "exports"], function (require, exports) {
         else {
             f.houseNumber = f.attributes[addressFields.houseNumber];
         }
-        if (f.attributes[addressFields.region] == null ||
-            f.attributes[addressFields.region].length < 1) {
-            errorMessage += addressFields.region + " is blank, ";
+        if (f.attributes[addressFields.community] == null ||
+            String(f.attributes[addressFields.community]).length < 1) {
+            errorMessage += addressFields.community + " is blank, ";
         }
         else {
-            f.community = f.attributes[addressFields.region];
+            f.community = String(f.attributes[addressFields.community]);
         }
         f.roadName = setFullRoadName(f, addressFields.roadNames);
         f.fullAddress = setFullAddress(f);
@@ -285,12 +309,22 @@ define(["require", "exports"], function (require, exports) {
                 roadLookup[f.roadName][f.community].forEach(function (rs) {
                     if (rs.communities[0] === f.community) {
                         if (isWithin(f.houseNumber, rs.addressRanges[0])) {
-                            matches.push({ a: f, side: 0, rs: rs });
+                            matches.push({
+                                side: 0,
+                                rsOID: rs.objectId,
+                                rsGeom: rs.geometry,
+                                addressRanges: rs.addressRanges
+                            });
                         }
                     }
                     if (rs.communities[1] === f.community) {
                         if (isWithin(f.houseNumber, rs.addressRanges[1])) {
-                            matches.push({ a: f, side: 1, rs: rs });
+                            matches.push({
+                                side: 1,
+                                rsOID: rs.objectId,
+                                rsGeom: rs.geometry,
+                                addressRanges: rs.addressRanges
+                            });
                         }
                     }
                 });
@@ -320,4 +354,157 @@ define(["require", "exports"], function (require, exports) {
     var isWithin = function (a, b) {
         return b[0] <= a && a <= b[1] && (a % 2 === b[0] % 2 || a % 2 === b[1] % 2);
     };
+    function makeFishbones(_a) {
+        var _this = this;
+        var addressOID = _a.addressOID;
+        var count = addressFeatures.length;
+        var fishboneGraphics = [];
+        addressFeatures.forEach(function (af, idx) {
+            var _a, _b;
+            if (idx % 100 === 0) {
+                _this.remoteClient.invoke("incrementFishboneProgress", idx / count);
+            }
+            if (af.attributes[addressOID] in addressRoadPairs) {
+                var match = addressRoadPairs[af.attributes[addressOID]];
+                var rsGeom = void 0;
+                if (((_b = (_a = match.rsGeom) === null || _a === void 0 ? void 0 : _a.paths) === null || _b === void 0 ? void 0 : _b.length) <= 1) {
+                    rsGeom = new Polyline_1.default(match.rsGeom);
+                }
+                else {
+                    return;
+                }
+                var endpoint = getEndpoint(Number(af.attributes[addressFields.houseNumber]), addressRoadPairs[af.attributes[addressOID]], rsGeom);
+                var afPath_1 = [[af.geometry.x, af.geometry.y], endpoint];
+                var grphc_1 = {
+                    attributes: af.attributes,
+                    geometry: {
+                        type: "polyline",
+                        spatialReference: { wkid: match.rsGeom.spatialReference.wkid },
+                        paths: [afPath_1]
+                    },
+                    symbol: {
+                        type: "simple-line",
+                        miterLimit: 0,
+                        width: 1.5,
+                        color: [76, 230, 0, 0.5]
+                    },
+                    rsGeom: rsGeom
+                };
+                fishboneGraphics.forEach(function (fg) {
+                    var fgPath = fg.geometry.paths[0];
+                    if (intersects(afPath_1[0][0], afPath_1[0][1], afPath_1[1][0], afPath_1[1][1], fgPath[0][0], fgPath[0][1], fgPath[1][0], fgPath[1][1])) {
+                        grphc_1.symbol = {
+                            type: "simple-line",
+                            miterLimit: 0,
+                            width: 1.5,
+                            color: [255, 0, 0, 0.5]
+                        };
+                        fg.symbol = {
+                            type: "simple-line",
+                            miterLimit: 0,
+                            width: 1.5,
+                            color: [255, 0, 0, 0.5]
+                        };
+                    }
+                });
+                fishboneGraphics.push(grphc_1);
+            }
+        });
+        return fishboneGraphics;
+    }
+    exports.makeFishbones = makeFishbones;
+    var getEndpoint = function (houseNumber, m, rsGeom) {
+        var percentAlong = getPercentAlongSegment(houseNumber, m);
+        var totalLength = geodesicUtils.geodesicLengths([
+            new Polyline_1.default(webMercUtils.webMercatorToGeographic(rsGeom))
+        ])[0];
+        var _a = getPointAlongLine(rsGeom, (totalLength - 4) * percentAlong + 2), pointOnLine = _a[0], angle = _a[1];
+        //(totalLength - 4) * percentAlong + 2
+        var endpoint;
+        if (pointOnLine) {
+            endpoint = getPointAtDistance(pointOnLine, toDegrees(angle), m.side);
+        }
+        return endpoint;
+    };
+    var getPointAlongLine = function (polyline, distance) {
+        var x1, x2, y1, y2;
+        var travelledDistance = 0;
+        var pathDistance;
+        var distanceDiff;
+        var angle;
+        var path = polyline.paths[0];
+        x1 = path[0][0];
+        y1 = path[0][1];
+        x2 = path[1][0];
+        y2 = path[1][1];
+        angle = Math.atan2(y2 - y1, x2 - x1);
+        if (distance === 0) {
+            return [polyline.getPoint(0, 0), angle];
+        }
+        else if (distance > 0) {
+            for (var i = 1; i < path.length; i++) {
+                x1 = path[i - 1][0];
+                y1 = path[i - 1][1];
+                x2 = path[i][0];
+                y2 = path[i][1];
+                var from = webMercUtils.webMercatorToGeographic(new Point_1.default({ x: x1, y: y1, spatialReference: polyline.spatialReference }));
+                var to = webMercUtils.webMercatorToGeographic(new Point_1.default({ x: x2, y: y2, spatialReference: polyline.spatialReference }));
+                pathDistance = geodesicUtils.geodesicDistance(from, to).distance;
+                angle = Math.atan2(y2 - y1, x2 - x1);
+                travelledDistance += pathDistance;
+                if (travelledDistance === distance) {
+                    return [polyline.getPoint(0, i), angle];
+                }
+                else if (travelledDistance > distance) {
+                    distanceDiff = distance - (travelledDistance - pathDistance);
+                    var bearing = toDegrees(angle);
+                    bearing = bearing * -1 + 90;
+                    bearing += 360;
+                    bearing = bearing % 360;
+                    return [
+                        geodesicUtils.pointFromDistance(webMercUtils.webMercatorToGeographic(polyline.getPoint(0, i - 1)), distanceDiff, bearing),
+                        angle
+                    ];
+                }
+            }
+        }
+        return null;
+    };
+    var getPointAtDistance = function (point, bearing, side) {
+        bearing = bearing * -1 + 90;
+        bearing += 360;
+        if (side === 0) {
+            bearing += -90;
+        }
+        if (side === 1) {
+            bearing += 90;
+        }
+        bearing = bearing % 360;
+        var endpoint = webMercUtils.geographicToWebMercator(geodesicUtils.pointFromDistance(point, 2, bearing));
+        return [endpoint.x, endpoint.y];
+    };
+    var toDegrees = function (val) {
+        return (val * 180) / Math.PI;
+    };
+    var getPercentAlongSegment = function (houseNumber, match) {
+        var denom = match.addressRanges[match.side][1] - match.addressRanges[match.side][0];
+        if (denom !== 0) {
+            return (houseNumber - match.addressRanges[match.side][0]) / denom;
+        }
+        else {
+            return 0.5;
+        }
+    };
+    function intersects(a, b, c, d, p, q, r, s) {
+        var det, gamma, lambda;
+        det = (c - a) * (s - q) - (r - p) * (d - b);
+        if (det === 0) {
+            return false;
+        }
+        else {
+            lambda = ((s - q) * (r - a) + (p - r) * (s - b)) / det;
+            gamma = ((b - d) * (r - a) + (c - a) * (s - b)) / det;
+            return 0 < lambda && lambda < 1 && 0 < gamma && gamma < 1;
+        }
+    }
 });
